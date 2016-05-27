@@ -31,7 +31,7 @@ public class GfsSeekableByteChannel implements SeekableByteChannel {
     checkClosed();
     checkReadAccess();
     synchronized(this) {
-      return copyBytes(dst, buffer);
+      return buffer.remaining() == 0 ? -1 : copyBytes(dst, buffer);
     }
   }
 
