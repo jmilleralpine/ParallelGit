@@ -6,20 +6,20 @@ import javax.annotation.Nullable;
 import com.beijunyi.parallelgit.utils.TreeUtils;
 import org.eclipse.jgit.dircache.DirCacheEditor;
 import org.eclipse.jgit.dircache.DirCacheEntry;
-import org.eclipse.jgit.lib.AnyObjectId;
 import org.eclipse.jgit.lib.FileMode;
+import org.eclipse.jgit.lib.ObjectId;
 
 public class CacheEntryUpdate extends DirCacheEditor.PathEdit {
 
-  private AnyObjectId newBlob;
+  private ObjectId newBlob;
   private FileMode newFileMode;
 
-  public CacheEntryUpdate(@Nonnull String entryPath) {
-    super(TreeUtils.normalizeTreePath(entryPath));
+  public CacheEntryUpdate(String entryPath) {
+    super(TreeUtils.normalizeNodePath(entryPath));
   }
 
   @Nonnull
-  public CacheEntryUpdate setNewBlob(@Nullable AnyObjectId blob) {
+  public CacheEntryUpdate setNewBlob(@Nullable ObjectId blob) {
     this.newBlob = blob;
     return this;
   }
@@ -31,7 +31,7 @@ public class CacheEntryUpdate extends DirCacheEditor.PathEdit {
   }
 
   @Override
-  public void apply(@Nonnull DirCacheEntry ent) {
+  public void apply(DirCacheEntry ent) {
     if(newBlob != null)
       ent.setObjectId(newBlob);
     if(newFileMode != null)

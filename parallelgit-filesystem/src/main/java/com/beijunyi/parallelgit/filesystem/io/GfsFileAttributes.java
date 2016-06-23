@@ -7,10 +7,13 @@ import java.util.Set;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
-import org.eclipse.jgit.lib.AnyObjectId;
 import org.eclipse.jgit.lib.FileMode;
+import org.eclipse.jgit.lib.ObjectId;
 
+import static com.beijunyi.parallelgit.filesystem.io.GfsFileAttributeView.Basic.BASIC_KEYS;
 import static com.beijunyi.parallelgit.filesystem.io.GfsFileAttributeView.*;
+import static com.beijunyi.parallelgit.filesystem.io.GfsFileAttributeView.Git.GIT_KEYS;
+import static com.beijunyi.parallelgit.filesystem.io.GfsFileAttributeView.Posix.POSIX_KEYS;
 
 public abstract class GfsFileAttributes {
 
@@ -26,7 +29,7 @@ public abstract class GfsFileAttributes {
     private final long size;
     private final Object fileKey;
 
-    private Basic(@Nonnull Map<String, Object> attributes) {
+    private Basic(Map<String, Object> attributes) {
       lastModifiedTime = (FileTime) attributes.get(LAST_MODIFIED_TIME_NAME);
       lastAccessTime = (FileTime) attributes.get(LAST_ACCESS_TIME_NAME);
       creationTime = (FileTime) attributes.get(CREATION_TIME_NAME);
@@ -38,7 +41,7 @@ public abstract class GfsFileAttributes {
       fileKey = attributes.get(FILE_KEY_NAME);
     }
 
-    Basic(@Nonnull GfsFileAttributeView view) throws IOException {
+    Basic(GfsFileAttributeView view) throws IOException {
       this(view.readAttributes(BASIC_KEYS));
     }
 
@@ -99,14 +102,14 @@ public abstract class GfsFileAttributes {
     private final Set<PosixFilePermission> permissions;
 
     @SuppressWarnings("unchecked")
-    private Posix(@Nonnull Map<String, Object> attributes) {
+    private Posix(Map<String, Object> attributes) {
       super(attributes);
       owner = (UserPrincipal) attributes.get(GfsFileAttributeView.Posix.OWNER_NAME);
       group = (GroupPrincipal) attributes.get(GfsFileAttributeView.Posix.GROUP_NAME);
       permissions = (Set<PosixFilePermission>) attributes.get(GfsFileAttributeView.Posix.PERMISSIONS_NAME);
     }
 
-    Posix(@Nonnull GfsFileAttributeView view) throws IOException {
+    Posix(GfsFileAttributeView view) throws IOException {
       this(view.readAttributes(POSIX_KEYS));
     }
 
@@ -131,18 +134,18 @@ public abstract class GfsFileAttributes {
 
     private final boolean isNew;
     private final boolean isModified;
-    private final AnyObjectId objectId;
+    private final ObjectId objectId;
     private final FileMode fileMode;
 
-    public Git(@Nonnull Map<String, Object> attributes) throws IOException {
+    public Git(Map<String, Object> attributes) throws IOException {
       super(attributes);
       isNew = (boolean) attributes.get(GfsFileAttributeView.IS_NEW);
       isModified = (boolean) attributes.get(GfsFileAttributeView.IS_MODIFIED);
-      objectId = (AnyObjectId) attributes.get(GfsFileAttributeView.OBJECT_ID);
+      objectId = (ObjectId) attributes.get(GfsFileAttributeView.OBJECT_ID);
       fileMode = (FileMode) attributes.get(GfsFileAttributeView.FILE_MODE);
     }
 
-    public Git(@Nonnull GfsFileAttributeView.Git view) throws IOException {
+    public Git(GfsFileAttributeView.Git view) throws IOException {
       this(view.readAttributes(GIT_KEYS));
     }
 
@@ -158,7 +161,7 @@ public abstract class GfsFileAttributes {
 
     @Nullable
     @Override
-    public AnyObjectId getObjectId() throws IOException {
+    public ObjectId getObjectId() throws IOException {
       return objectId;
     }
 

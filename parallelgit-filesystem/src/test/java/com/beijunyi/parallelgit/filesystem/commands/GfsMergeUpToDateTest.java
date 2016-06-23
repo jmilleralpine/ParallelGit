@@ -1,58 +1,79 @@
 package com.beijunyi.parallelgit.filesystem.commands;
 
-import java.nio.file.Files;
+import java.io.IOException;
 
 import com.beijunyi.parallelgit.AbstractParallelGitTest;
 import com.beijunyi.parallelgit.filesystem.Gfs;
 import com.beijunyi.parallelgit.filesystem.GitFileSystem;
-import com.beijunyi.parallelgit.utils.BranchUtils;
+import com.beijunyi.parallelgit.filesystem.ParallelGitMergeTest;
+import com.beijunyi.parallelgit.filesystem.commands.GfsMerge.Result;
 import org.eclipse.jgit.lib.AnyObjectId;
-import org.junit.Assert;
+import org.eclipse.jgit.lib.ObjectId;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
 import static com.beijunyi.parallelgit.filesystem.Gfs.merge;
-import static org.eclipse.jgit.api.MergeResult.MergeStatus.ALREADY_UP_TO_DATE;
+import static com.beijunyi.parallelgit.filesystem.commands.GfsMerge.Status.ALREADY_UP_TO_DATE;
+import static com.beijunyi.parallelgit.utils.BranchUtils.getHeadCommit;
+import static java.nio.file.Files.*;
+import static org.junit.Assert.*;
 
-public class GfsMergeUpToDateTest extends AbstractParallelGitTest {
+public class GfsMergeUpToDateTest extends AbstractParallelGitTest implements ParallelGitMergeTest {
 
-  private static final String OURS = "ours";
-  private static final String THEIRS = "theirs";
+  private GitFileSystem gfs;
 
   @Before
   public void setUp() throws Exception {
     initRepository();
     AnyObjectId base = commit();
-    AnyObjectId theirs = commit(base);
-    AnyObjectId ours = commit(theirs);
-    BranchUtils.createBranch(OURS, ours, repo);
-    BranchUtils.createBranch(THEIRS, theirs, repo);
+    AnyObjectId theirs = commitToBranch(THEIRS, base);
+    commitToBranch(OURS, theirs);
+    gfs = Gfs.newFileSystem(OURS, repo);
   }
 
-  @Test
-  public void whenHeadIsAheadOfSourceBranch_theResultShouldBeAlreadyUpToDate() throws Exception {
-    try(GitFileSystem gfs = Gfs.newFileSystem(OURS, repo)) {
-      GfsMerge.Result result = merge(gfs).source(THEIRS).execute();
-      Assert.assertEquals(ALREADY_UP_TO_DATE, result.getStatus());
+  @After
+  public void tearDown() throws IOException {
+    if(gfs != null) {
+      gfs.close();
+      gfs = null;
     }
   }
 
   @Test
-  public void whenHeadIsAheadWithDirtyFile_theResultShouldBeAlreadyUpToDate() throws Exception {
-    try(GitFileSystem gfs = Gfs.newFileSystem(OURS, repo)) {
-      Files.write(gfs.getPath("/some_file.txt"), someBytes());
-      GfsMerge.Result result = merge(gfs).source(THEIRS).execute();
-      Assert.assertEquals(ALREADY_UP_TO_DATE, result.getStatus());
-    }
+  public void mergeWhenHeadIsAheadOfSourceBranch_theResultShouldBeAlreadyUpToDate() throws Exception {
+    Result result = merge(gfs).source(THEIRS).execute();
+
+    assertTrue(result.isSuccessful());
+    assertEquals(ALREADY_UP_TO_DATE, result.getStatus());
   }
 
   @Test
-  public void whenHeadIsAheadWithDirtyFile_theFileShouldStillExistInTheFileSystemAfterMerge() throws Exception {
-    try(GitFileSystem gfs = Gfs.newFileSystem(OURS, repo)) {
-      Files.write(gfs.getPath("/test_file.txt"), someBytes());
-      merge(gfs).source(THEIRS).execute();
-      Assert.assertTrue(Files.exists(gfs.getPath("/test_file.txt")));
-    }
+  public void mergeWhenHeadIsAheadWithLocalChanges_theResultShouldBeAlreadyUpToDate() throws Exception {
+    write(gfs.getPath("/some_file.txt"), someBytes());
+    Result result = merge(gfs).source(THEIRS).execute();
+
+    assertTrue(result.isSuccessful());
+    assertEquals(ALREADY_UP_TO_DATE, result.getStatus());
+  }
+
+  @Test
+  public void mergeWhenHeadIsAheadWithLocalChanges_theLocalChangesShouldBeKept() throws Exception {
+    write(gfs.getPath("/test_file.txt"), someBytes());
+    Result result = merge(gfs).source(THEIRS).execute();
+
+    assertTrue(result.isSuccessful());
+    assertTrue(exists(gfs.getPath("/test_file.txt")));
+  }
+
+  @Test
+  public void mergeWhenHeadIsAheadWithLocalChanges_theResultCommitShouldBeTheHeadOfLocalBranch() throws IOException {
+    ObjectId expected = getHeadCommit(OURS, repo);
+    Result result = merge(gfs).source(THEIRS).execute();
+
+    assertTrue(result.isSuccessful());
+    assertEquals(ALREADY_UP_TO_DATE, result.getStatus());
+    assertEquals(expected, result.getCommit());
   }
 
 }

@@ -1,11 +1,11 @@
 package com.beijunyi.parallelgit.filesystem.commands;
 
 import java.io.IOException;
-import java.util.EnumSet;
 import javax.annotation.Nonnull;
 
-import com.beijunyi.parallelgit.filesystem.*;
-import com.beijunyi.parallelgit.filesystem.exceptions.BadGfsStateException;
+import com.beijunyi.parallelgit.filesystem.GfsFileStore;
+import com.beijunyi.parallelgit.filesystem.GfsStatusProvider;
+import com.beijunyi.parallelgit.filesystem.GitFileSystem;
 import org.eclipse.jgit.lib.Repository;
 
 public abstract class GfsCommand<Result extends GfsCommandResult> {
@@ -17,7 +17,7 @@ public abstract class GfsCommand<Result extends GfsCommandResult> {
 
   protected boolean executed = false;
 
-  protected GfsCommand(@Nonnull GitFileSystem gfs) {
+  protected GfsCommand(GitFileSystem gfs) {
     this.gfs = gfs;
     this.status = gfs.getStatusProvider();
     this.store = gfs.getFileStore();
@@ -29,27 +29,12 @@ public abstract class GfsCommand<Result extends GfsCommandResult> {
     checkExecuted();
     executed = true;
     try(GfsStatusProvider.Update update = status.prepareUpdate()) {
-      prepareState(update);
       return doExecute(update);
     }
   }
 
-  protected void prepareState(@Nonnull GfsStatusProvider.Update update) {
-    if(!getAcceptableStates().contains(status.state()))
-      throw new BadGfsStateException(status.state());
-    update.state(getCommandState());
-  }
-
   @Nonnull
-  protected EnumSet<GfsState> getAcceptableStates() {
-     return EnumSet.of(GfsState.NORMAL);
-  }
-
-  @Nonnull
-  protected abstract GfsState getCommandState();
-
-  @Nonnull
-  protected abstract Result doExecute(@Nonnull GfsStatusProvider.Update update) throws IOException;
+  protected abstract Result doExecute(GfsStatusProvider.Update update) throws IOException;
 
   private void checkExecuted() {
     if(executed)

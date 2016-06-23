@@ -6,23 +6,22 @@ import java.util.List;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
-import com.beijunyi.parallelgit.filesystem.GfsState;
 import com.beijunyi.parallelgit.filesystem.GfsStatusProvider;
 import com.beijunyi.parallelgit.filesystem.GitFileSystem;
 import com.beijunyi.parallelgit.filesystem.exceptions.NoBranchException;
 import com.beijunyi.parallelgit.filesystem.exceptions.NoHeadCommitException;
 import com.beijunyi.parallelgit.filesystem.exceptions.UnsuccessfulOperationException;
-import com.beijunyi.parallelgit.utils.StashUtils;
 import org.eclipse.jgit.lib.AnyObjectId;
 import org.eclipse.jgit.lib.PersonIdent;
-import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 
 import static com.beijunyi.parallelgit.filesystem.commands.GfsCreateStash.Result.*;
 import static com.beijunyi.parallelgit.filesystem.commands.GfsCreateStash.Status.*;
 import static com.beijunyi.parallelgit.utils.CommitUtils.*;
+import static com.beijunyi.parallelgit.utils.StashUtils.addToStash;
 import static java.util.Arrays.asList;
 import static java.util.Collections.singletonList;
+import static org.eclipse.jgit.lib.Repository.shortenRefName;
 
 public class GfsCreateStash extends GfsCommand<GfsCreateStash.Result> {
 
@@ -35,60 +34,60 @@ public class GfsCreateStash extends GfsCommand<GfsCreateStash.Result> {
   private PersonIdent committer;
   private RevCommit parent;
 
-  public GfsCreateStash(@Nonnull GitFileSystem gfs) {
+  public GfsCreateStash(GitFileSystem gfs) {
     super(gfs);
   }
 
   @Nonnull
-  @Override
-  protected GfsState getCommandState() {
-    return GfsState.CREATING_STASH;
-  }
-
-  @Nonnull
-  public GfsCreateStash indexMessage(@Nonnull String indexMessage) {
-    this.indexMessage = indexMessage;
+  public GfsCreateStash indexMessage(String message) {
+    this.indexMessage = message;
     return this;
   }
 
   @Nonnull
-  public GfsCreateStash committer(@Nonnull PersonIdent committer) {
+  public GfsCreateStash workingDirectoryMessage(String message) {
+    this.workingDirectoryMessage = message;
+    return this;
+  }
+
+  @Nonnull
+  public GfsCreateStash committer(PersonIdent committer) {
     this.committer = committer;
     return this;
   }
 
   @Nonnull
   @Override
-  protected GfsCreateStash.Result doExecute(@Nonnull GfsStatusProvider.Update update) throws IOException {
+  protected GfsCreateStash.Result doExecute(GfsStatusProvider.Update update) throws IOException {
     prepareBranch();
     prepareCommitter();
     prepareParent();
     prepareIndexMessage();
     prepareDirectoryMessage();
     AnyObjectId resultTree = gfs.flush();
-    if(parent != null && parent.getTree().equals(resultTree))
-      return noChange();
-    RevCommit indexCommit = makeIndexCommit(resultTree);
-    RevCommit stashCommit = makeWorkingDirectoryCommit(indexCommit);
-    StashUtils.addToStash(stashCommit, repo);
-    resetHead();
-    return success(stashCommit);
+    GfsCreateStash.Result result;
+    if(parent != null && parent.getTree().equals(resultTree)) {
+      result = noChange();
+    } else {
+      RevCommit indexCommit = makeIndexCommit(resultTree);
+      RevCommit stashCommit = makeWorkingDirectoryCommit(indexCommit);
+      addToStash(stashCommit, repo);
+      result = success(stashCommit);
+    }
+    return result;
   }
 
   private void prepareBranch() {
-    if(!status.isAttached())
-      throw new NoBranchException();
-    branch = Repository.shortenRefName(status.branch());
+    if(!status.isAttached()) throw new NoBranchException();
+    branch = shortenRefName(status.branch());
   }
 
   private void prepareCommitter() {
-    if(committer == null)
-      committer = new PersonIdent(repo);
+    if(committer == null) committer = new PersonIdent(repo);
   }
 
   private void prepareParent() {
-    if(!status.isInitialized())
-      throw new NoHeadCommitException();
+    if(!status.isInitialized()) throw new NoHeadCommitException();
     parent = status.commit();
   }
 
@@ -103,20 +102,16 @@ public class GfsCreateStash extends GfsCommand<GfsCreateStash.Result> {
   }
 
   @Nonnull
-  private RevCommit makeIndexCommit(@Nonnull AnyObjectId tree) throws IOException {
+  private RevCommit makeIndexCommit(AnyObjectId tree) throws IOException {
     List<RevCommit> parents = singletonList(parent);
     return createCommit(indexMessage, tree, committer, committer, parents, repo);
   }
 
   @Nonnull
-  private RevCommit makeWorkingDirectoryCommit(@Nonnull RevCommit indexCommit) throws IOException {
+  private RevCommit makeWorkingDirectoryCommit(RevCommit indexCommit) throws IOException {
     AnyObjectId tree = indexCommit.getTree();
     List<RevCommit> parents = asList(parent, indexCommit);
     return createCommit(workingDirectoryMessage, tree, committer, committer, parents, repo);
-  }
-
-  private void resetHead() throws IOException {
-    gfs.reset();
   }
 
   public enum Status {
@@ -129,13 +124,13 @@ public class GfsCreateStash extends GfsCommand<GfsCreateStash.Result> {
     private final Status status;
     private final RevCommit commit;
 
-    public Result(@Nonnull Status status, @Nullable RevCommit commit) {
+    public Result(Status status, @Nullable RevCommit commit) {
       this.status = status;
       this.commit = commit;
     }
 
     @Nonnull
-    public static Result success(@Nonnull RevCommit commit) {
+    public static Result success(RevCommit commit) {
       return new Result(COMMITTED, commit);
     }
 

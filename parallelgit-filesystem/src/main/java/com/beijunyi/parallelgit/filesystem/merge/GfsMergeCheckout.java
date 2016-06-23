@@ -1,65 +1,37 @@
 package com.beijunyi.parallelgit.filesystem.merge;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.HashMap;
 import java.util.Map;
 import javax.annotation.Nonnull;
 
 import com.beijunyi.parallelgit.filesystem.GitFileSystem;
-import com.beijunyi.parallelgit.filesystem.io.GfsCheckout;
-import org.eclipse.jgit.diff.Sequence;
+import com.beijunyi.parallelgit.filesystem.io.GfsDefaultCheckout;
 import org.eclipse.jgit.merge.MergeFormatter;
-import org.eclipse.jgit.merge.MergeResult;
 
-import static com.beijunyi.parallelgit.filesystem.utils.GfsPathUtils.toAbsolutePath;
-import static org.eclipse.jgit.lib.Constants.CHARACTER_ENCODING;
 import static org.eclipse.jgit.lib.FileMode.REGULAR_FILE;
 
-public class GfsMergeCheckout extends GfsCheckout {
+public class GfsMergeCheckout extends GfsDefaultCheckout {
 
-  private String base = "BASE";
-  private String ours = "OURS";
-  private String theirs = "THEIRS";
-  private Map<String, MergeResult<? extends Sequence>> conflicts;
+  private final Map<String, MergeConflict> conflicts;
   private MergeFormatter formatter;
 
-  public GfsMergeCheckout(@Nonnull GitFileSystem gfs) {
+  private GfsMergeCheckout(GitFileSystem gfs, Map<String, MergeConflict> conflicts) {
     super(gfs);
-  }
-
-  @Nonnull
-  public GfsMergeCheckout base(@Nonnull String base) {
-    this.base = base;
-    return this;
-  }
-
-  @Nonnull
-  public GfsMergeCheckout ours(@Nonnull String ours) {
-    this.ours = ours;
-    return this;
-  }
-
-  @Nonnull
-  public GfsMergeCheckout theirs(@Nonnull String theirs) {
-    this.theirs = theirs;
-    return this;
-  }
-
-  @Nonnull
-  public GfsMergeCheckout handleConflicts(@Nonnull Map<String, MergeResult<? extends Sequence>> conflicts) {
     this.conflicts = conflicts;
-    return this;
+  }
+
+  public static GfsMergeCheckout handleConflicts(GitFileSystem gfs, Map<String, MergeConflict> conflicts) {
+    return new GfsMergeCheckout(gfs, conflicts);
   }
 
   @Nonnull
-  public GfsMergeCheckout withFormatter(@Nonnull MergeFormatter formatter) {
+  public GfsMergeCheckout withFormatter(MergeFormatter formatter) {
     this.formatter = formatter;
     return this;
   }
 
   @Override
-  protected boolean skips(@Nonnull String path) {
+  protected boolean skips(String path) {
     return super.skips(path) || (conflicts != null && conflicts.containsKey(path));
   }
 
@@ -71,19 +43,11 @@ public class GfsMergeCheckout extends GfsCheckout {
 
   private void addFormattedConflicts() throws IOException {
     if(conflicts != null) {
-      for(Map.Entry<String, MergeResult<? extends Sequence>> conflict : conflicts.entrySet()) {
+      for(Map.Entry<String, MergeConflict> conflict : conflicts.entrySet()) {
         String path = conflict.getKey();
-        byte[] formatted = formatConflict(conflict.getValue());
+        byte[] formatted = conflict.getValue().format(formatter);
         changes.addChange(path, formatted, REGULAR_FILE);
       }
-    }
-  }
-
-  @Nonnull
-  private byte[] formatConflict(@Nonnull MergeResult<? extends Sequence> conflict) throws IOException {
-    try(ByteArrayOutputStream stream = new ByteArrayOutputStream()) {
-      formatter.formatMerge(stream, conflict, base, theirs, ours, CHARACTER_ENCODING);
-      return stream.toByteArray();
     }
   }
 

@@ -6,9 +6,10 @@ import java.nio.file.NoSuchFileException;
 
 import com.beijunyi.parallelgit.AbstractParallelGitTest;
 import org.eclipse.jgit.lib.AnyObjectId;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+
+import static org.junit.Assert.*;
 
 public class GitFileUtilsOpenFileTest extends AbstractParallelGitTest {
 
@@ -19,14 +20,14 @@ public class GitFileUtilsOpenFileTest extends AbstractParallelGitTest {
 
   @Test
   public void openFile_theResultInputStreamShouldProvideTheDataOfTheFile() throws IOException {
-    byte[] expected = "test data".getBytes();
+    byte[] expected = someBytes();
     writeToCache("/test_file.txt", expected);
     AnyObjectId commit = commitToMaster();
     byte[] actual = new byte[expected.length];
     try(InputStream stream = GitFileUtils.openFile("/test_file.txt", commit.getName(), repo)) {
-      Assert.assertEquals(expected.length, stream.read(actual));
+      assertEquals(expected.length, stream.read(actual));
     }
-    Assert.assertArrayEquals(expected, actual);
+    assertArrayEquals(expected, actual);
   }
 
   @Test(expected = NoSuchFileException.class)

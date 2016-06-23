@@ -12,53 +12,54 @@ import com.beijunyi.parallelgit.utils.exceptions.RefUpdateValidator;
 import org.eclipse.jgit.lib.*;
 import org.eclipse.jgit.revwalk.*;
 
-import static com.beijunyi.parallelgit.utils.RefUtils.ensureBranchRefName;
+import static com.beijunyi.parallelgit.utils.CommitUtils.getCommit;
+import static com.beijunyi.parallelgit.utils.RefUtils.fullBranchName;
+import static org.eclipse.jgit.lib.Constants.*;
+import static org.eclipse.jgit.lib.ObjectId.zeroId;
 
 public final class BranchUtils {
 
   @Nonnull
-  public static List<RevCommit> getHistory(@Nonnull String name, @Nonnull Repository repo) throws IOException {
-    Ref branchRef = repo.getRef(ensureBranchRefName(name));
+  public static List<RevCommit> getHistory(String name, Repository repo) throws IOException {
+    Ref branchRef = repo.exactRef(fullBranchName(name));
     if(branchRef == null)
       throw new NoSuchBranchException(name);
-    RevCommit head = CommitUtils.getCommit(branchRef, repo);
-    return CommitUtils.getCommitHistory(head, repo);
+    RevCommit head = getCommit(branchRef, repo);
+    return CommitUtils.getHistory(head, repo);
   }
 
   @Nonnull
-  public static Map<String, Ref> getBranches(@Nonnull Repository repo) throws IOException {
-    return repo.getRefDatabase().getRefs(Constants.R_HEADS);
+  public static Map<String, Ref> getBranches(Repository repo) throws IOException {
+    return repo.getRefDatabase().getRefs(R_HEADS);
   }
 
-  public static boolean branchExists(@Nonnull String name, @Nonnull Repository repo) throws IOException {
-    Ref ref = repo.getRef(ensureBranchRefName(name));
+  public static boolean branchExists(String name, Repository repo) throws IOException {
+    Ref ref = repo.exactRef(fullBranchName(name));
     return ref != null;
   }
 
   @Nonnull
-  public static RevCommit getHeadCommit(@Nonnull String name, @Nonnull Repository repo) throws IOException {
+  public static RevCommit getHeadCommit(String name, Repository repo) throws IOException {
     Ref ref = RefUtils.getBranchRef(name, repo);
-    if(ref == null)
-      throw new NoSuchBranchException(name);
-    return CommitUtils.getCommit(ref.getObjectId(), repo);
+    return getCommit(ref.getObjectId(), repo);
   }
 
-  public static void createBranch(@Nonnull String name, @Nonnull RevTag startPoint, @Nonnull Repository repo) throws IOException {
+  public static void createBranch(String name, RevTag startPoint, Repository repo) throws IOException {
     createBranch(name, startPoint.getObject(), repo, "tag " + startPoint.getName());
   }
 
-  public static void createBranch(@Nonnull String name, @Nonnull RevCommit startPoint, @Nonnull Repository repo) throws IOException {
+  public static void createBranch(String name, RevCommit startPoint, Repository repo) throws IOException {
     createBranch(name, startPoint, repo, "commit " + startPoint.getShortMessage());
   }
 
-  public static void createBranch(@Nonnull String name, @Nonnull AnyObjectId startPoint, @Nonnull Repository repo) throws IOException {
+  public static void createBranch(String name, AnyObjectId startPoint, Repository repo) throws IOException {
     try(RevWalk rw = new RevWalk(repo)) {
       RevObject revObj = rw.parseAny(startPoint);
       switch(revObj.getType()) {
-        case Constants.OBJ_TAG:
+        case OBJ_TAG:
           createBranch(name, (RevTag) revObj, repo);
           break;
-        case Constants.OBJ_COMMIT:
+        case OBJ_COMMIT:
           createBranch(name, (RevCommit) revObj, repo);
           break;
         default:
@@ -67,7 +68,7 @@ public final class BranchUtils {
     }
   }
 
-  public static void createBranch(@Nonnull String name, @Nonnull Ref startPoint, @Nonnull Repository repo) throws IOException {
+  public static void createBranch(String name, Ref startPoint, Repository repo) throws IOException {
     if(RefUtils.isBranchRef(startPoint))
       createBranch(name, startPoint.getObjectId(), repo, "branch " + startPoint.getName());
     else if(RefUtils.isTagRef(startPoint))
@@ -76,42 +77,46 @@ public final class BranchUtils {
       throw new UnsupportedOperationException(startPoint.getName());
   }
 
-  public static void createBranch(@Nonnull String name, @Nonnull String startPoint, @Nonnull Repository repo) throws IOException {
-    Ref ref = repo.getRef(startPoint);
+  public static void createBranch(String name, String startPoint, Repository repo) throws IOException {
+    Ref ref = repo.findRef(startPoint);
     if(ref != null)
       createBranch(name, ref, repo);
     else {
-      RevCommit commit = CommitUtils.getCommit(startPoint, repo);
+      RevCommit commit = getCommit(startPoint, repo);
       createBranch(name, commit, repo);
     }
   }
 
-  public static void resetBranchHead(@Nonnull String name, @Nonnull AnyObjectId commitId, @Nonnull Repository repo) throws IOException {
-    setBranchHead(name, commitId, repo, makeRefLogMessage(ensureBranchRefName(name), "updating HEAD"), true);
+  public static void resetBranchHead(String name, AnyObjectId commitId, Repository repo) throws IOException {
+    setBranchHead(name, commitId, repo, makeRefLogMessage(fullBranchName(name), "updating HEAD"), true);
   }
 
-  public static void newCommit(@Nonnull String name, @Nonnull AnyObjectId commitId, @Nonnull Repository repo) throws IOException {
+  public static void newCommit(String name, AnyObjectId commitId, Repository repo) throws IOException {
     setBranchHead(name, commitId, repo, makeRefLogMessage("commit", commitId, repo), false);
   }
 
-  public static void amendCommit(@Nonnull String name, @Nonnull AnyObjectId commitId, @Nonnull Repository repo) throws IOException {
+  public static void amendCommit(String name, AnyObjectId commitId, Repository repo) throws IOException {
     setBranchHead(name, commitId, repo, makeRefLogMessage("commit (amend)", commitId, repo), true);
   }
 
-  public static void initBranch(@Nonnull String name, @Nonnull AnyObjectId commitId, @Nonnull Repository repo) throws IOException {
+  public static void mergeCommit(String name, AnyObjectId commitId, Repository repo) throws IOException {
+    setBranchHead(name, commitId, repo, makeRefLogMessage("commit (merge)", commitId, repo), false);
+  }
+
+  public static void initBranch(String name, AnyObjectId commitId, Repository repo) throws IOException {
     setBranchHead(name, commitId, repo, makeRefLogMessage("commit (initial)", commitId, repo), false);
   }
 
-  public static void cherryPickCommit(@Nonnull String name, @Nonnull AnyObjectId commitId, @Nonnull Repository repo) throws IOException {
+  public static void cherryPick(String name, AnyObjectId commitId, Repository repo) throws IOException {
     setBranchHead(name, commitId, repo, makeRefLogMessage("cherry-pick", commitId, repo), false);
   }
 
-  public static void mergeBranch(@Nonnull String name, @Nonnull AnyObjectId commitId, @Nonnull Ref targetRef, @Nonnull String details, @Nonnull Repository repo) throws IOException {
-    setBranchHead(name, commitId, repo, makeRefLogMessage("merge " + targetRef.getName(), details), false);
+  public static void merge(String name, AnyObjectId commitId, Ref sourceRef, String details, Repository repo) throws IOException {
+    setBranchHead(name, commitId, repo, makeRefLogMessage("merge " + sourceRef.getName(), details), false);
   }
 
-  public static void deleteBranch(@Nonnull String name, @Nonnull Repository repo) throws IOException {
-    String refName = ensureBranchRefName(name);
+  public static void deleteBranch(String name, Repository repo) throws IOException {
+    String refName = fullBranchName(name);
     if(prepareDeleteBranch(refName, repo)) {
       RefUpdate update = repo.updateRef(refName);
       update.setRefLogMessage("branch deleted", false);
@@ -121,28 +126,28 @@ public final class BranchUtils {
   }
 
   @Nonnull
-  public static List<ReflogEntry> getLogs(@Nonnull String name, int max, @Nonnull Repository repository) throws IOException{
-    return RefUtils.getRefLogs(ensureBranchRefName(name), max, repository);
+  public static List<ReflogEntry> getLogs(String name, int max, Repository repository) throws IOException{
+    return RefUtils.getRefLogs(fullBranchName(name), max, repository);
   }
 
   @Nonnull
-  public static List<ReflogEntry> getLogs(@Nonnull String name, @Nonnull Repository repository) throws IOException{
-    return RefUtils.getRefLogs(ensureBranchRefName(name), Integer.MAX_VALUE, repository);
+  public static List<ReflogEntry> getLogs(String name, Repository repository) throws IOException{
+    return RefUtils.getRefLogs(fullBranchName(name), Integer.MAX_VALUE, repository);
   }
 
   @Nullable
-  public static ReflogEntry getLastLog(@Nonnull String name, @Nonnull Repository repository) throws IOException {
+  public static ReflogEntry getLastLog(String name, Repository repository) throws IOException {
     List<ReflogEntry> entries = getLogs(name, 1, repository);
     if(entries.isEmpty())
       return null;
     return entries.get(0);
   }
 
-  private static void setBranchHead(@Nonnull String name, @Nonnull AnyObjectId commitId, @Nonnull Repository repo, @Nullable String refLogMessage, boolean forceUpdate) throws IOException {
-    String refName = ensureBranchRefName(name);
+  private static void setBranchHead(String name, AnyObjectId commitId, Repository repo, @Nullable String refLogMessage, boolean forceUpdate) throws IOException {
+    String refName = fullBranchName(name);
     AnyObjectId currentHead = repo.resolve(refName);
     if(currentHead == null)
-      currentHead = ObjectId.zeroId();
+      currentHead = zeroId();
 
     RefUpdate update = repo.updateRef(refName);
     update.setRefLogMessage(refLogMessage, false);
@@ -152,14 +157,14 @@ public final class BranchUtils {
     RefUpdateValidator.validate(update.update());
   }
 
-  private static void createBranch(@Nonnull String name, @Nonnull AnyObjectId startPoint, @Nonnull Repository repo, @Nonnull String startPointName) throws IOException {
-    String branchRef = ensureBranchRefName(name);
+  private static void createBranch(String name, AnyObjectId startPoint, Repository repo, String startPointName) throws IOException {
+    String branchRef = fullBranchName(name);
     if(branchExists(branchRef, repo))
       throw new BranchAlreadyExistsException(branchRef);
     setBranchHead(name, startPoint, repo, makeRefLogMessage("branch", "Created from " + startPointName), false);
   }
 
-  private static boolean prepareDeleteBranch(@Nonnull String refName, @Nonnull Repository repo) throws IOException {
+  private static boolean prepareDeleteBranch(String refName, Repository repo) throws IOException {
     boolean branchExists = branchExists(refName, repo);
     if(refName.equals(repo.getFullBranch())) {
       if(branchExists)
@@ -172,13 +177,13 @@ public final class BranchUtils {
   }
 
   @Nonnull
-  private static String makeRefLogMessage(@Nonnull String action, @Nonnull String details) {
+  private static String makeRefLogMessage(String action, String details) {
     return action + ": " + details;
   }
 
   @Nonnull
-  private static String makeRefLogMessage(@Nonnull String action, @Nonnull AnyObjectId commit, @Nonnull Repository repo) throws IOException {
-    return makeRefLogMessage(action, CommitUtils.getCommit(commit, repo).getShortMessage());
+  private static String makeRefLogMessage(String action, AnyObjectId commit, Repository repo) throws IOException {
+    return makeRefLogMessage(action, getCommit(commit, repo).getShortMessage());
   }
 
 }

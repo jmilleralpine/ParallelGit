@@ -1,31 +1,23 @@
 package com.beijunyi.parallelgit.filesystem.io;
 
-import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import com.beijunyi.parallelgit.utils.io.GitFileEntry;
+
+import static com.beijunyi.parallelgit.filesystem.io.Node.fromEntry;
 
 public class UpdateNode extends GfsChange {
 
   private final GitFileEntry entry;
 
-  public UpdateNode(@Nonnull GitFileEntry entry) {
+  public UpdateNode(GitFileEntry entry) {
     this.entry = entry;
   }
 
+  @Nullable
   @Override
-  protected boolean ignoresCurrentNode() {
-    return true;
+  protected Node convertNode(@Nullable Node node, DirectoryNode parent) {
+    return fromEntry(entry, parent);
   }
 
-  @Override
-  protected boolean shouldDelete(@Nullable Node currentNode) {
-    return false;
-  }
-
-  @Nonnull
-  @Override
-  protected Node createNode(@Nullable Node currentNode, @Nonnull DirectoryNode parent) {
-    return Node.fromEntry(entry, parent);
-  }
 }

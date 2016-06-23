@@ -12,14 +12,13 @@ import com.beijunyi.parallelgit.filesystem.io.RootNode;
 import org.eclipse.jgit.revwalk.RevCommit;
 
 import static com.beijunyi.parallelgit.filesystem.GitFileSystemProvider.GFS;
-import static com.beijunyi.parallelgit.filesystem.io.RootNode.fromCommit;
-import static com.beijunyi.parallelgit.filesystem.io.RootNode.newRoot;
+import static com.beijunyi.parallelgit.filesystem.io.RootNode.*;
 
 public class GfsFileStore extends FileStore {
 
   private final RootNode root;
 
-  public GfsFileStore(@Nullable RevCommit commit, @Nonnull GfsObjectService objService) throws IOException {
+  public GfsFileStore(@Nullable RevCommit commit, GfsObjectService objService) throws IOException {
     root = commit != null ? fromCommit(commit, objService) : newRoot(objService);
   }
 
@@ -47,7 +46,7 @@ public class GfsFileStore extends FileStore {
 
   @Override
   public long getUsableSpace() {
-    return Runtime.getRuntime().freeMemory();
+    return 0;
   }
 
   @Override
@@ -56,16 +55,19 @@ public class GfsFileStore extends FileStore {
   }
 
   @Override
-  public boolean supportsFileAttributeView(@Nonnull Class<? extends FileAttributeView> type) {
-    return type.isAssignableFrom(GfsFileAttributeView.Basic.class)
-             || type.isAssignableFrom(GfsFileAttributeView.Posix.class) ;
+  public boolean supportsFileAttributeView(Class<? extends FileAttributeView> type) {
+    return
+      type.isAssignableFrom(GfsFileAttributeView.Basic.class)
+        || type.isAssignableFrom(GfsFileAttributeView.Posix.class)
+        || type.isAssignableFrom(GfsFileAttributeView.Git.class);
   }
 
   @Override
-  public boolean supportsFileAttributeView(@Nonnull String name) {
+  public boolean supportsFileAttributeView(String name) {
     switch(name) {
       case GfsFileAttributeView.Basic.BASIC_VIEW:
       case GfsFileAttributeView.Posix.POSIX_VIEW:
+      case GfsFileAttributeView.Git.GIT_VIEW:
         return true;
       default:
         return false;
@@ -74,12 +76,12 @@ public class GfsFileStore extends FileStore {
 
   @Nullable
   @Override
-  public <V extends FileStoreAttributeView> V getFileStoreAttributeView(@Nonnull Class<V> type) {
+  public <V extends FileStoreAttributeView> V getFileStoreAttributeView(Class<V> type) {
     return null;
   }
 
   @Override
-  public Object getAttribute(@Nonnull String attribute) throws IOException {
+  public Object getAttribute(String attribute) throws IOException {
     if(attribute.equals("totalSpace"))
       return getTotalSpace();
     if(attribute.equals("usableSpace"))

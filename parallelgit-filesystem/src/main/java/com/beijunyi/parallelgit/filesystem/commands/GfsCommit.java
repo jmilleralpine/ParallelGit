@@ -1,23 +1,25 @@
 package com.beijunyi.parallelgit.filesystem.commands;
 
 import java.io.IOException;
-import java.util.*;
+import java.util.List;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
-import com.beijunyi.parallelgit.filesystem.GfsState;
 import com.beijunyi.parallelgit.filesystem.GfsStatusProvider;
 import com.beijunyi.parallelgit.filesystem.GitFileSystem;
 import com.beijunyi.parallelgit.filesystem.exceptions.UnsuccessfulOperationException;
+import com.beijunyi.parallelgit.filesystem.merge.MergeNote;
 import com.beijunyi.parallelgit.utils.BranchUtils;
 import com.beijunyi.parallelgit.utils.CommitUtils;
 import org.eclipse.jgit.lib.AnyObjectId;
+import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.revwalk.RevCommit;
 
-import static com.beijunyi.parallelgit.filesystem.GfsState.*;
+import static java.util.Arrays.asList;
+import static java.util.Collections.*;
 
-public final class GfsCommit extends GfsCommand<GfsCommit.Result> {
+public class GfsCommit extends GfsCommand<GfsCommit.Result> {
 
   private PersonIdent author;
   private PersonIdent committer;
@@ -26,24 +28,18 @@ public final class GfsCommit extends GfsCommand<GfsCommit.Result> {
   private boolean amend = false;
   private boolean allowEmpty = false;
 
-  public GfsCommit(@Nonnull GitFileSystem gfs) {
+  public GfsCommit(GitFileSystem gfs) {
     super(gfs);
   }
 
   @Nonnull
   @Override
-  protected Result doExecute(@Nonnull GfsStatusProvider.Update update) throws IOException {
-    if(status.isAttached()) {
-      if(!isHeadSynchronized()) {
-        update.state(NORMAL);
-        return Result.outOfSync();
-      }
-    }
+  protected Result doExecute(GfsStatusProvider.Update update) throws IOException {
     prepareMessage();
     prepareCommitter();
     prepareAuthor();
     prepareParents();
-    AnyObjectId resultTree = gfs.flush();
+    ObjectId resultTree = gfs.flush();
     gfs.updateOrigin(resultTree);
     if(!allowEmpty && !amend && isSameAsParent(resultTree))
       return Result.noChange();
@@ -82,38 +78,15 @@ public final class GfsCommit extends GfsCommand<GfsCommit.Result> {
     return this;
   }
 
-  @Nonnull
-  @Override
-  protected EnumSet<GfsState> getAcceptableStates() {
-    return EnumSet.of(NORMAL, MERGING_CONFLICT, CHERRY_PICKING_CONFLICT);
-  }
-
-  @Nonnull
-  @Override
-  protected GfsState getCommandState() {
-    return GfsState.COMMITTING;
-  }
-
-  private boolean isHeadSynchronized() throws IOException {
-    if(BranchUtils.branchExists(status.branch(), repo)) {
-      RevCommit head = BranchUtils.getHeadCommit(status.branch(), repo);
-      return head.equals(status.commit());
-    }
-    return true;
-  }
-
   private void prepareMessage() {
     if(message == null) {
-      if(status.state() == GfsState.MERGING || status.state() == GfsState.CHERRY_PICKING)
-        message = status.mergeNote().getMessage();
-      else
-        message = "";
+      MergeNote note = status.mergeNote();
+      message = note != null ? note.getMessage() : "";
     }
   }
 
   private void prepareCommitter() {
-    if(committer == null)
-      committer = new PersonIdent(repo);
+    if(committer == null) committer = new PersonIdent(repo);
   }
 
   private void prepareAuthor() {
@@ -128,27 +101,38 @@ public final class GfsCommit extends GfsCommand<GfsCommit.Result> {
   private void prepareParents() {
     if(parents == null) {
       if(!amend) {
-        if(status.isInitialized())
-          parents = Collections.singletonList(status.commit());
-        else
-          parents = Collections.emptyList();
-      } else
-        parents = Arrays.asList(status.commit().getParents());
+        MergeNote mergeNote = status.mergeNote();
+        if(mergeNote != null && mergeNote.getSource() != null) {
+          parents = asList(status.commit(), mergeNote.getSource());
+        } else if(status.isInitialized()) {
+          parents = singletonList(status.commit());
+        } else {
+          parents = emptyList();
+        }
+      } else {
+        parents = asList(status.commit().getParents());
+      }
     }
   }
 
-  private boolean isSameAsParent(@Nonnull AnyObjectId newTree) {
+  private boolean isSameAsParent(AnyObjectId newTree) {
     return status.isInitialized() && status.commit().getTree().equals(newTree);
   }
 
-  private void updateStatus(@Nonnull GfsStatusProvider.Update update, @Nonnull RevCommit newHead) throws IOException {
+  private void updateStatus(GfsStatusProvider.Update update, RevCommit newHead) throws IOException {
     if(status.isAttached()) {
-      if(amend)
+      MergeNote mergeNote = status.mergeNote();
+      if(!amend) {
+        if(mergeNote != null) {
+          BranchUtils.mergeCommit(status.branch(), newHead, repo);
+        } else if(status.isInitialized()) {
+          BranchUtils.newCommit(status.branch(), newHead, repo);
+        } else {
+          BranchUtils.initBranch(status.branch(), newHead, repo);
+        }
+      } else {
         BranchUtils.amendCommit(status.branch(), newHead, repo);
-      else if(status.isInitialized())
-        BranchUtils.newCommit(status.branch(), newHead, repo);
-      else
-        BranchUtils.initBranch(status.branch(), newHead, repo);
+      }
     }
     update.commit(newHead);
     update.clearMergeNote();
@@ -156,8 +140,7 @@ public final class GfsCommit extends GfsCommand<GfsCommit.Result> {
 
   public enum Status {
     COMMITTED,
-    NO_CHANGE,
-    OUT_OF_SYNC
+    NO_CHANGE
   }
 
   public static class Result implements GfsCommandResult {
@@ -165,24 +148,19 @@ public final class GfsCommit extends GfsCommand<GfsCommit.Result> {
     private final Status status;
     private final RevCommit commit;
 
-    private Result(@Nonnull Status status, @Nullable RevCommit commit) {
+    private Result(Status status, @Nullable RevCommit commit) {
       this.status = status;
       this.commit = commit;
     }
 
     @Nonnull
-    public static Result success(@Nonnull RevCommit commit) {
+    public static Result success(RevCommit commit) {
       return new Result(Status.COMMITTED, commit);
     }
 
     @Nonnull
     public static Result noChange() {
       return new Result(Status.NO_CHANGE, null);
-    }
-
-    @Nonnull
-    public static Result outOfSync() {
-      return new Result(Status.OUT_OF_SYNC, null);
     }
 
     @Override
@@ -192,8 +170,7 @@ public final class GfsCommit extends GfsCommand<GfsCommit.Result> {
 
     @Nonnull
     public RevCommit getCommit() {
-      if(commit == null)
-        throw new UnsuccessfulOperationException();
+      if(commit == null) throw new UnsuccessfulOperationException();
       return commit;
     }
 

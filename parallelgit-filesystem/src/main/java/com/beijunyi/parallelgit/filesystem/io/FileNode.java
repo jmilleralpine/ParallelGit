@@ -5,8 +5,8 @@ import javax.annotation.Nonnull;
 
 import com.beijunyi.parallelgit.filesystem.exceptions.IncompatibleFileModeException;
 import com.beijunyi.parallelgit.utils.io.BlobSnapshot;
-import org.eclipse.jgit.lib.AnyObjectId;
 import org.eclipse.jgit.lib.FileMode;
+import org.eclipse.jgit.lib.ObjectId;
 
 import static org.eclipse.jgit.lib.FileMode.*;
 
@@ -16,35 +16,35 @@ public class FileNode extends Node<BlobSnapshot, byte[]> {
 
   private long size = -1;
 
-  private FileNode(@Nonnull AnyObjectId id, @Nonnull FileMode mode, @Nonnull DirectoryNode parent) {
+  private FileNode(ObjectId id, FileMode mode, DirectoryNode parent) {
     super(id, mode, parent);
   }
 
-  private FileNode(@Nonnull FileMode mode, @Nonnull DirectoryNode parent) {
+  private FileNode(FileMode mode, DirectoryNode parent) {
     super(mode, parent);
   }
 
-  private FileNode(@Nonnull byte[] bytes, @Nonnull FileMode mode, @Nonnull DirectoryNode parent) {
+  private FileNode(byte[] bytes, FileMode mode, DirectoryNode parent) {
     super(bytes, mode, parent);
   }
 
   @Nonnull
-  protected static FileNode fromObject(@Nonnull AnyObjectId id, @Nonnull FileMode mode, @Nonnull DirectoryNode parent) {
+  protected static FileNode fromBlob(ObjectId id, FileMode mode, DirectoryNode parent) {
     return new FileNode(id, mode, parent);
   }
 
   @Nonnull
-  public static FileNode fromBytes(@Nonnull byte[] bytes, @Nonnull FileMode mode, @Nonnull DirectoryNode parent) {
+  public static FileNode fromBytes(byte[] bytes, FileMode mode, DirectoryNode parent) {
     return new FileNode(bytes, mode, parent);
   }
 
   @Nonnull
-  public static FileNode newFile(@Nonnull FileMode mode, @Nonnull DirectoryNode parent) {
+  public static FileNode newFile(FileMode mode, DirectoryNode parent) {
     return new FileNode(mode, parent);
   }
 
   @Nonnull
-  public static FileNode newFile(boolean executable, @Nonnull DirectoryNode parent) {
+  public static FileNode newFile(boolean executable, DirectoryNode parent) {
     return newFile(executable ? EXECUTABLE_FILE : REGULAR_FILE, parent);
   }
 
@@ -68,45 +68,45 @@ public class FileNode extends Node<BlobSnapshot, byte[]> {
 
   @Nonnull
   @Override
-  protected byte[] loadData(@Nonnull BlobSnapshot snapshot) {
+  protected byte[] loadData(BlobSnapshot snapshot) {
     return snapshot.getData();
   }
 
   @Override
-  protected boolean isTrivial(@Nonnull byte[] data) {
+  protected boolean isTrivial(byte[] data) {
     return false;
   }
 
   @Nonnull
   @Override
-  protected BlobSnapshot captureData(@Nonnull byte[] data, boolean persist) {
+  protected BlobSnapshot captureData(byte[] data, boolean persist) {
     return BlobSnapshot.capture(data);
   }
 
   @Nonnull
   @Override
-  public Node clone(@Nonnull DirectoryNode parent) throws IOException {
+  public Node clone(DirectoryNode parent) throws IOException {
     FileNode ret;
     if(isInitialized()) {
       ret = newFile(mode, parent);
       ret.data = data;
       ret.size = data.length;
     } else if(id != null) {
-      ret = FileNode.fromObject(id , mode, parent);
+      ret = FileNode.fromBlob(id , mode, parent);
       parent.getObjectService().pullObject(id, objService);
     } else
       throw new IllegalStateException();
     return ret;
   }
 
-  public void setBytes(@Nonnull byte[] bytes) {
+  public void setBytes(byte[] bytes) {
     this.data = bytes;
     this.size = bytes.length;
     id = null;
     invalidateParentCache();
   }
 
-  protected void checkFileMode(@Nonnull FileMode proposed) {
+  protected void checkFileMode(FileMode proposed) {
     if(TREE.equals(proposed) || GITLINK.equals(proposed))
       throw new IncompatibleFileModeException(mode, proposed);
   }

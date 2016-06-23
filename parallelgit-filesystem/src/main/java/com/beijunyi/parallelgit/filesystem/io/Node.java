@@ -5,58 +5,60 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import com.beijunyi.parallelgit.filesystem.GfsObjectService;
-import com.beijunyi.parallelgit.utils.ObjectUtils;
 import com.beijunyi.parallelgit.utils.io.GitFileEntry;
 import com.beijunyi.parallelgit.utils.io.ObjectSnapshot;
-import org.eclipse.jgit.lib.AnyObjectId;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
 
+import static com.beijunyi.parallelgit.filesystem.io.DirectoryNode.fromTree;
+import static com.beijunyi.parallelgit.filesystem.io.FileNode.fromBlob;
+import static com.beijunyi.parallelgit.utils.io.GitFileEntry.missingEntry;
 import static org.eclipse.jgit.lib.FileMode.*;
+import static org.eclipse.jgit.lib.ObjectId.zeroId;
 
 public abstract class Node<Snapshot extends ObjectSnapshot, Data> {
 
   protected final GfsObjectService objService;
 
-  protected volatile GitFileEntry origin = GitFileEntry.TRIVIAL;
+  protected volatile GitFileEntry origin = missingEntry();
   protected volatile DirectoryNode parent;
   protected volatile Snapshot snapshot;
-  protected volatile AnyObjectId id;
+  protected volatile ObjectId id;
   protected volatile FileMode mode;
   protected volatile Data data;
 
-  protected Node(@Nonnull FileMode mode, @Nonnull GfsObjectService objService) {
+  protected Node(FileMode mode, GfsObjectService objService) {
     this.objService = objService;
     this.mode = mode;
     initialize();
   }
 
-  protected Node(@Nonnull AnyObjectId id, @Nonnull FileMode mode, @Nonnull GfsObjectService objService) {
+  protected Node(ObjectId id, FileMode mode, GfsObjectService objService) {
     this.objService = objService;
     this.id = id;
     this.mode = mode;
   }
 
-  protected Node(@Nonnull FileMode mode, @Nonnull DirectoryNode parent) {
+  protected Node(FileMode mode, DirectoryNode parent) {
     this(mode, parent.getObjectService());
     this.parent = parent;
   }
 
-  protected Node(@Nonnull AnyObjectId id, @Nonnull FileMode mode, @Nonnull DirectoryNode parent) {
+  protected Node(ObjectId id, FileMode mode, DirectoryNode parent) {
     this(id, mode, parent.getObjectService());
     this.parent = parent;
   }
 
-  protected Node(@Nonnull Data data, @Nonnull FileMode mode, @Nonnull DirectoryNode parent) {
+  protected Node(Data data, FileMode mode, DirectoryNode parent) {
     this(mode, parent);
     this.data = data;
   }
 
   @Nonnull
-  public static Node fromEntry(@Nonnull GitFileEntry entry, @Nonnull DirectoryNode parent) {
-    if(entry.getMode().equals(TREE))
-      return DirectoryNode.fromObject(entry.getId(), parent);
-    return FileNode.fromObject(entry.getId(), entry.getMode(), parent);
+  public static Node fromEntry(GitFileEntry entry, DirectoryNode parent) {
+    return TREE.equals(entry.getMode())
+             ? fromTree(entry.getId(), parent)
+             : fromBlob(entry.getId(), entry.getMode(), parent);
   }
 
   @Nonnull
@@ -81,10 +83,10 @@ public abstract class Node<Snapshot extends ObjectSnapshot, Data> {
   }
 
   @Nonnull
-  public AnyObjectId getObjectId(boolean persist) throws IOException {
+  public ObjectId getObjectId(boolean persist) throws IOException {
     if(id == null || persist && !objService.hasObject(id)) {
       Snapshot snapshot = takeSnapshot(persist);
-      id = snapshot != null ? snapshot.getId() : ObjectId.zeroId();
+      id = snapshot != null ? snapshot.getId() : zeroId();
     }
     return id;
   }
@@ -94,7 +96,7 @@ public abstract class Node<Snapshot extends ObjectSnapshot, Data> {
     return origin;
   }
 
-  public void updateOrigin(@Nonnull GitFileEntry entry) throws IOException {
+  public void updateOrigin(GitFileEntry entry) throws IOException {
     origin = entry;
   }
 
@@ -103,7 +105,7 @@ public abstract class Node<Snapshot extends ObjectSnapshot, Data> {
     return mode;
   }
 
-  public void setMode(@Nonnull FileMode mode) {
+  public void setMode(FileMode mode) {
     checkFileMode(mode);
     this.mode = mode;
     invalidateParentCache();
@@ -114,7 +116,7 @@ public abstract class Node<Snapshot extends ObjectSnapshot, Data> {
   }
 
   public boolean isModified() throws IOException {
-    AnyObjectId id = getObjectId(false);
+    ObjectId id = getObjectId(false);
     return !origin.getId().equals(id) || !origin.getMode().equals(mode);
   }
 
@@ -122,18 +124,17 @@ public abstract class Node<Snapshot extends ObjectSnapshot, Data> {
   protected Data getData() throws IOException {
     if(data != null)
       return data;
-    if(id == null)
-      throw new IllegalStateException();
+    if(id == null) throw new IllegalStateException();
     data = loadData(loadSnapshot(id));
     return data;
   }
 
   protected boolean isTrivial() throws IOException {
-    return ObjectUtils.isZeroId(getObjectId(false));
+    return isTrivial(getObjectId(false));
   }
 
   @Nonnull
-  private Snapshot loadSnapshot(@Nonnull AnyObjectId id) throws IOException {
+  private Snapshot loadSnapshot(ObjectId id) throws IOException {
     Snapshot ret = objService.read(id, getSnapshotType());
     if(origin.getId().equals(id))
       snapshot = ret;
@@ -142,23 +143,11 @@ public abstract class Node<Snapshot extends ObjectSnapshot, Data> {
 
   @Nullable
   protected Snapshot takeSnapshot(boolean persist) throws IOException {
-    if(data == null)
-      throw new IllegalStateException();
-    if(isTrivial(data))
-      return null;
+    if(data == null) throw new IllegalStateException();
+    if(isTrivial(data)) return null;
     Snapshot snapshot = captureData(data, persist);
-    if(persist)
-      objService.write(snapshot);
+    if(persist) objService.write(snapshot);
     return snapshot;
-  }
-
-  @Nullable
-  public Snapshot getSnapshot(boolean persist) throws IOException {
-    if(data != null)
-      return takeSnapshot(persist);
-    if(id == null)
-      throw new IllegalStateException();
-    return loadSnapshot(id);
   }
 
   protected boolean isInitialized() {
@@ -170,12 +159,11 @@ public abstract class Node<Snapshot extends ObjectSnapshot, Data> {
   }
 
   public void reset() {
-    if(origin.isMissing())
-      throw new IllegalStateException();
+    if(origin.isMissing()) throw new IllegalStateException();
     reset(origin);
   }
 
-  protected void reset(@Nonnull GitFileEntry entry) {
+  protected void reset(GitFileEntry entry) {
     checkFileMode(mode);
     this.id = entry.getId();
     this.mode = entry.getMode();
@@ -198,20 +186,24 @@ public abstract class Node<Snapshot extends ObjectSnapshot, Data> {
 
   public abstract long getSize() throws IOException;
 
-  protected abstract void checkFileMode(@Nonnull FileMode proposed);
+  protected abstract void checkFileMode(FileMode proposed);
 
   @Nonnull
   protected abstract Data getDefaultData();
 
   @Nonnull
-  protected abstract Data loadData(@Nonnull Snapshot snapshot) throws IOException;
+  protected abstract Data loadData(Snapshot snapshot) throws IOException;
 
-  protected abstract boolean isTrivial(@Nonnull Data data) throws IOException;
-
-  @Nonnull
-  protected abstract Snapshot captureData(@Nonnull Data data, boolean persist) throws IOException;
+  protected abstract boolean isTrivial(Data data) throws IOException;
 
   @Nonnull
-  protected abstract Node clone(@Nonnull DirectoryNode parent) throws IOException;
+  protected abstract Snapshot captureData(Data data, boolean persist) throws IOException;
+
+  @Nonnull
+  protected abstract Node clone(DirectoryNode parent) throws IOException;
+
+  protected static boolean isTrivial(ObjectId id) {
+    return zeroId().equals(id);
+  }
 
 }

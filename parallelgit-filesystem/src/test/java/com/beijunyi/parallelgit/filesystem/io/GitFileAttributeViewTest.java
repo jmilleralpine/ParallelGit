@@ -3,7 +3,6 @@ package com.beijunyi.parallelgit.filesystem.io;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.Collections;
-
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
@@ -18,6 +17,7 @@ import org.junit.Test;
 import static com.beijunyi.parallelgit.filesystem.io.GfsFileAttributeView.*;
 import static com.beijunyi.parallelgit.utils.TreeUtils.getObjectId;
 import static org.eclipse.jgit.lib.FileMode.*;
+import static org.eclipse.jgit.lib.ObjectId.zeroId;
 import static org.junit.Assert.*;
 
 public class GitFileAttributeViewTest extends AbstractGitFileSystemTest {
@@ -179,7 +179,7 @@ public class GitFileAttributeViewTest extends AbstractGitFileSystemTest {
   public void whenDirectoryIsEmpty_getObjectIdShouldReturnZeroId() throws IOException {
     initGitFileSystem();
     Files.createDirectory(gfs.getPath("/dir"));
-    assertEquals(ObjectId.zeroId(), objectId("/dir"));
+    assertEquals(zeroId(), objectId("/dir"));
   }
 
   @Test
@@ -218,32 +218,32 @@ public class GitFileAttributeViewTest extends AbstractGitFileSystemTest {
   }
 
   @Nonnull
-  private GfsFileAttributeView.Git open(@Nonnull String path) {
+  private GfsFileAttributeView.Git open(String path) {
     GfsFileAttributeView.Git view = (GfsFileAttributeView.Git) provider.getFileAttributeView(gfs.getPath(path), GitFileAttributeView.class);
     assert view != null;
     return view;
   }
 
   @Nullable
-  private Object readAttribute(@Nonnull String path, @Nonnull String key) throws IOException {
+  private Object readAttribute(String path, String key) throws IOException {
     return open(path).readAttributes(Collections.singleton(key)).get(key);
   }
 
-  private boolean isNew(@Nonnull String path) throws IOException {
+  private boolean isNew(String path) throws IOException {
     return (boolean) readAttribute(path, IS_NEW);
   }
 
-  private boolean isModified(@Nonnull String path) throws IOException {
+  private boolean isModified(String path) throws IOException {
     return (boolean) readAttribute(path, IS_MODIFIED);
   }
 
   @Nullable
-  private AnyObjectId objectId(@Nonnull String path) throws IOException {
-    return (AnyObjectId) readAttribute(path, OBJECT_ID);
+  private ObjectId objectId(String path) throws IOException {
+    return (ObjectId) readAttribute(path, OBJECT_ID);
   }
 
   @Nullable
-  private FileMode fileMode(@Nonnull String path) throws IOException {
+  private FileMode fileMode(String path) throws IOException {
     return (FileMode) readAttribute(path, FILE_MODE);
   }
 

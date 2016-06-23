@@ -6,68 +6,71 @@ import java.util.List;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import com.beijunyi.parallelgit.utils.exceptions.NoSuchBranchException;
 import org.eclipse.jgit.lib.*;
+
+import static org.eclipse.jgit.lib.Constants.*;
 
 public final class RefUtils {
 
-  private static boolean matchesPrefix(@Nonnull String name, @Nonnull String prefix) {
+  private static boolean matchesPrefix(String name, String prefix) {
     return name.startsWith(prefix);
   }
 
-  public static boolean matchesRefPrefix(@Nonnull String name) {
-    return matchesPrefix(name, Constants.R_REFS);
+  public static boolean matchesRefPrefix(String name) {
+    return matchesPrefix(name, R_REFS);
   }
 
-  public static boolean matchesBranchRefPrefix(@Nonnull String name) {
-    return matchesPrefix(name, Constants.R_HEADS);
+  public static boolean matchesBranchRefPrefix(String name) {
+    return matchesPrefix(name, R_HEADS);
   }
 
-  public static boolean matchesTagRefPrefix(@Nonnull String name) {
-    return matchesPrefix(name, Constants.R_TAGS);
+  public static boolean matchesTagRefPrefix(String name) {
+    return matchesPrefix(name, R_TAGS);
   }
 
-  public static boolean isBranchRef(@Nonnull Ref name) {
+  public static boolean isBranchRef(Ref name) {
     return matchesBranchRefPrefix(name.getName());
   }
 
-  public static boolean isTagRef(@Nonnull Ref name) {
+  public static boolean isTagRef(Ref name) {
     return matchesTagRefPrefix(name.getName());
   }
 
   @Nonnull
-  public static String ensureRefPrefix(@Nonnull String name, @Nonnull String prefix) {
+  public static String appendPrefix(String name, String prefix) {
     if(!matchesPrefix(name, prefix)) {
-      if(matchesRefPrefix(name))
-        throw new IllegalArgumentException("\"" + prefix + "\" is not the prefix of " + name);
+      if(matchesRefPrefix(name)) throw new IllegalArgumentException("\"" + prefix + "\" is not the prefix of " + name);
       name = prefix + name;
     }
-    if(!Repository.isValidRefName(name))
-      throw new IllegalArgumentException(name + " is not a valid ref name");
+    if(!Repository.isValidRefName(name)) throw new IllegalArgumentException(name + " is not a valid ref name");
     return name;
   }
 
   @Nonnull
-  public static String ensureBranchRefName(@Nonnull String name) {
-    return ensureRefPrefix(name, Constants.R_HEADS);
+  public static String fullBranchName(String name) {
+    return appendPrefix(name, R_HEADS);
   }
 
   @Nonnull
-  public static String ensureTagRefName(@Nonnull String name) {
-    return ensureRefPrefix(name, Constants.R_TAGS);
-  }
-
-  @Nullable
-  public static Ref getBranchRef(@Nonnull String name, @Nonnull Repository repo) throws IOException {
-    return repo.getRef(ensureBranchRefName(name));
-  }
-
-  @Nullable
-  public static Ref getTagRef(@Nonnull String name, @Nonnull Repository repo) throws IOException {
-    return repo.getRef(ensureTagRefName(name));
+  public static String fullTagRef(String name) {
+    return appendPrefix(name, R_TAGS);
   }
 
   @Nonnull
-  public static List<ReflogEntry> getRefLogs(@Nonnull String ref, int max, @Nonnull Repository repository) throws IOException {
+  public static Ref getBranchRef(String name, Repository repo) throws IOException {
+    Ref ret = repo.exactRef(fullBranchName(name));
+    if(ret == null) throw new NoSuchBranchException(name);
+    return ret;
+  }
+
+  @Nullable
+  public static Ref getTagRef(String name, Repository repo) throws IOException {
+    return repo.exactRef(fullTagRef(name));
+  }
+
+  @Nonnull
+  public static List<ReflogEntry> getRefLogs(String ref, int max, Repository repository) throws IOException {
     ReflogReader reader = repository.getReflogReader(ref);
     return reader != null ? reader.getReverseEntries(max) : Collections.<ReflogEntry>emptyList();
   }

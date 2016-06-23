@@ -5,12 +5,15 @@ import java.nio.file.Files;
 import javax.annotation.Nonnull;
 
 import com.beijunyi.parallelgit.filesystem.AbstractGitFileSystemTest;
-import com.beijunyi.parallelgit.utils.ObjectUtils;
+import com.beijunyi.parallelgit.utils.BlobUtils;
+import com.beijunyi.parallelgit.utils.TreeUtils;
 import com.beijunyi.parallelgit.utils.io.GitFileEntry;
-import org.eclipse.jgit.lib.*;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.TreeFormatter;
 import org.junit.Before;
 import org.junit.Test;
 
+import static com.beijunyi.parallelgit.utils.io.GitFileEntry.*;
 import static org.eclipse.jgit.lib.FileMode.REGULAR_FILE;
 import static org.junit.Assert.*;
 
@@ -120,9 +123,9 @@ public class GfsChangesCollectorTest extends AbstractGitFileSystemTest {
   }
 
   @Nonnull
-  private GitFileEntry newFileEntry(@Nonnull byte[] bytes) throws IOException {
-    AnyObjectId blobId = ObjectUtils.insertBlob(bytes, repo);
-    return new GitFileEntry(blobId, REGULAR_FILE);
+  private GitFileEntry newFileEntry(byte[] bytes) throws IOException {
+    ObjectId blobId = BlobUtils.insertBlob(bytes, repo);
+    return newEntry(blobId, REGULAR_FILE);
   }
 
   @Nonnull
@@ -132,18 +135,18 @@ public class GfsChangesCollectorTest extends AbstractGitFileSystemTest {
 
   @Nonnull
   private GitFileEntry deletion() {
-    return new GitFileEntry(ObjectId.zeroId(), FileMode.MISSING);
+    return missingEntry();
   }
 
   @Nonnull
-  private GitFileEntry newDirectoryEntry(@Nonnull String... children) throws IOException {
+  private GitFileEntry newDirectoryEntry(String... children) throws IOException {
     TreeFormatter tf = new TreeFormatter();
     for(String child : children) {
       GitFileEntry childEntry = someFileEntry();
       tf.append(child, childEntry.getMode(), childEntry.getId());
     }
-    AnyObjectId treeId = ObjectUtils.insertTree(tf, repo);
-    return new GitFileEntry(treeId, FileMode.TREE);
+    ObjectId treeId = TreeUtils.insertTree(tf, repo);
+    return newTreeEntry(treeId);
   }
 
   @Nonnull

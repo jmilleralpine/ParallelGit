@@ -4,7 +4,7 @@ import java.io.IOException;
 
 import org.junit.Test;
 
-import static org.junit.Assert.assertEquals;
+import static junit.framework.TestCase.assertEquals;
 
 public class GfsFileStoreSpaceTest extends PreSetupGitFileSystemTest {
 
@@ -22,8 +22,8 @@ public class GfsFileStoreSpaceTest extends PreSetupGitFileSystemTest {
 
   @Test
   public void getUsableSpace_shouldReturnTheAmountOfFreeMemory() throws IOException {
-    assertEquals(Runtime.getRuntime().freeMemory(), fileStore.getUsableSpace());
-    assertEquals(Runtime.getRuntime().freeMemory(), fileStore.getAttribute("usableSpace"));
+    assertEquals(0L, fileStore.getUsableSpace());
+    assertEquals(0L, fileStore.getAttribute("usableSpace"));
   }
 
 

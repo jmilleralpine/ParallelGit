@@ -3,16 +3,16 @@ package com.beijunyi.parallelgit.filesystem;
 import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.UserPrincipalLookupService;
-import java.util.*;
-import java.util.regex.Pattern;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import com.beijunyi.parallelgit.filesystem.io.RootNode;
 import com.beijunyi.parallelgit.filesystem.utils.GfsConfiguration;
-import com.beijunyi.parallelgit.filesystem.utils.GitGlobs;
 import com.beijunyi.parallelgit.utils.RefUtils;
-import org.eclipse.jgit.lib.AnyObjectId;
+import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 
@@ -26,23 +26,20 @@ public class GitFileSystem extends FileSystem {
 
   public static final Set<String> SUPPORTED_VIEWS = unmodifiableSet(new HashSet<>(asList(BASIC_VIEW, POSIX_VIEW)));
 
-  private static final String GLOB_SYNTAX = "glob";
-  private static final String REGEX_SYNTAX = "regex";
-
   private final String sid;
   private final GfsObjectService objService;
   private final GfsFileStore fileStore;
   private final GfsStatusProvider statusProvider;
 
-  private volatile boolean closed = false;
+  private boolean closed = false;
 
-  public GitFileSystem(@Nonnull GfsConfiguration cfg, @Nonnull String sid) throws IOException {
+  public GitFileSystem(GfsConfiguration cfg, String sid) throws IOException {
     this.sid = sid;
     objService = new GfsObjectService(cfg.repository());
     RevCommit commit = cfg.commit();
     String branch = cfg.branch();
     if(branch == null && commit == null)
-      branch = RefUtils.ensureBranchRefName(MASTER);
+      branch = RefUtils.fullBranchName(MASTER);
     fileStore = new GfsFileStore(commit, objService);
     statusProvider = new GfsStatusProvider(fileStore, branch, commit);
   }
@@ -50,7 +47,7 @@ public class GitFileSystem extends FileSystem {
   @Nonnull
   @Override
   public GitFileSystemProvider provider() {
-    return GitFileSystemProvider.getInstance();
+    return GitFileSystemProvider.getDefault();
   }
 
   @Override
@@ -58,7 +55,8 @@ public class GitFileSystem extends FileSystem {
     if(!closed) {
       closed = true;
       objService.close();
-      GitFileSystemProvider.getInstance().unregister(this);
+      statusProvider.close();
+      GitFileSystemProvider.getDefault().unregister(this);
     }
   }
 
@@ -81,25 +79,13 @@ public class GitFileSystem extends FileSystem {
   @Nonnull
   @Override
   public Iterable<Path> getRootDirectories() {
-    final List<Path> allowedList = Collections.<Path>singletonList(getRootPath());
-    return new Iterable<Path>() {
-      @Override
-      public Iterator<Path> iterator() {
-        return allowedList.iterator();
-      }
-    };
+    return Collections.<Path>singleton(getRootPath());
   }
 
   @Nonnull
   @Override
   public Iterable<FileStore> getFileStores() {
-    final List<FileStore> allowedList = Collections.<FileStore>singletonList(fileStore);
-    return new Iterable<FileStore>() {
-      @Override
-      public Iterator<FileStore> iterator() {
-        return allowedList.iterator();
-      }
-    };
+    return Collections.<FileStore>singleton(fileStore);
   }
 
   @Nonnull
@@ -110,17 +96,16 @@ public class GitFileSystem extends FileSystem {
 
   @Nonnull
   @Override
-  public GitPath getPath(@Nonnull String first, @Nonnull String... more) {
+  public GitPath getPath(String first, String... more) {
     String path;
-    if(more.length == 0)
+    if(more.length == 0) {
       path = first;
-    else {
+    } else {
       StringBuilder sb = new StringBuilder();
       sb.append(first);
       for(String segment: more) {
         if(segment.length() > 0) {
-          if(sb.length() > 0)
-            sb.append('/');
+          if(sb.length() > 0) sb.append('/');
           sb.append(segment);
         }
       }
@@ -131,32 +116,8 @@ public class GitFileSystem extends FileSystem {
 
   @Nonnull
   @Override
-  public PathMatcher getPathMatcher(@Nonnull String syntaxAndInput) {
-    int pos = syntaxAndInput.indexOf(':');
-    if(pos <= 0 || pos == syntaxAndInput.length())
-      throw new IllegalArgumentException();
-
-    String syntax = syntaxAndInput.substring(0, pos);
-    String input = syntaxAndInput.substring(pos + 1);
-
-    String expr;
-    if(syntax.equals(GLOB_SYNTAX))
-      expr = GitGlobs.toRegexPattern(input);
-    else {
-      if(syntax.equals(REGEX_SYNTAX))
-        expr = input;
-      else
-        throw new UnsupportedOperationException("Syntax '" + syntax + "' not recognized");
-    }
-
-    final Pattern pattern = Pattern.compile(expr);
-
-    return new PathMatcher() {
-      @Override
-      public boolean matches(@Nonnull Path path) {
-        return pattern.matcher(path.toString()).matches();
-      }
-    };
+  public PathMatcher getPathMatcher(String syntaxAndInput) {
+    return GfsPathMatcher.newMatcher(syntaxAndInput);
   }
 
   @Nullable
@@ -202,14 +163,14 @@ public class GitFileSystem extends FileSystem {
   }
 
   @Nonnull
-  public AnyObjectId flush() throws IOException {
+  public ObjectId flush() throws IOException {
     RootNode root = fileStore.getRoot();
-    AnyObjectId ret = root.getObjectId(true);
+    ObjectId ret = root.getObjectId(true);
     objService.flush();
     return ret;
   }
 
-  public void updateOrigin(@Nonnull AnyObjectId rootTree) throws IOException {
+  public void updateOrigin(ObjectId rootTree) throws IOException {
     RootNode root = fileStore.getRoot();
     root.updateOrigin(rootTree);
   }
@@ -236,4 +197,5 @@ public class GitFileSystem extends FileSystem {
     super.finalize();
     close();
   }
+
 }
